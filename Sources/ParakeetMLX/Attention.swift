@@ -357,29 +357,29 @@ public class RelPositionMultiHeadLocalAttention: RelPositionMultiHeadAttention {
             uint S_q = q_shape[2];
             uint S_k = k_shape[2];
             uint K_rel = 2 * W + 1;
-
+            
             uint target_idx = thread_position_in_grid.x;
             uint k_rel_idx = thread_position_in_grid.y;
-
+            
             if (target_idx >= B * H * S_q) return;
-
+            
             uint s_q_idx = target_idx % S_q;
             uint remaining_idx = target_idx / S_q;
             uint h_idx = remaining_idx % H;
             uint b_idx = remaining_idx / H;
             uint k_offset = k_rel_idx;
-
+            
             uint stick_q_k_idx = S_k - S_q + s_q_idx;
             // stick to right (assuming S_k >= S_q)
-
+            
             int s_k_idx_signed = int(stick_q_k_idx) + int(k_offset) - int(W);
             bool is_out_of_bounds = (s_k_idx_signed < 0) || (s_k_idx_signed >= S_k);
-
+            
             T result;
-
+            
             if (!is_out_of_bounds) {
                 uint s_k_idx = uint(s_k_idx_signed);
-
+            
                 // q[b, h, s_q, d]
                 uint Q_D_stride = D;
                 uint Q_S_stride = S_q * Q_D_stride;
@@ -388,27 +388,27 @@ public class RelPositionMultiHeadLocalAttention: RelPositionMultiHeadAttention {
                 uint K_D_stride = D;
                 uint K_S_stride = S_k * K_D_stride;
                 uint K_H_stride = H * K_S_stride;
-
+            
                 uint q_base_offset =
                     b_idx * Q_H_stride + h_idx * Q_S_stride + s_q_idx * Q_D_stride;
                 uint k_base_offset =
                     b_idx * K_H_stride + h_idx * K_S_stride + s_k_idx * K_D_stride;
-
+            
                 const device T* q_vec_ptr = q + q_base_offset;
                 const device T* k_vec_ptr = k + k_base_offset;
-
+            
                 result = T(0.0);
                 uint d_idx = 0;
-
+            
                 // hand unrolling
                 for (; d_idx + 16 <= D; d_idx += 16) {
                     T q_vals[16], k_vals[16];
-
+            
                     for (uint i = 0; i < 16; ++i) {
                         q_vals[i] = q_vec_ptr[d_idx + i];
                         k_vals[i] = k_vec_ptr[d_idx + i];
                     }
-
+            
                     result +=
                         q_vals[0] * k_vals[0] + q_vals[1] * k_vals[1] +
                         q_vals[2] * k_vals[2] + q_vals[3] * k_vals[3] +
@@ -419,7 +419,7 @@ public class RelPositionMultiHeadLocalAttention: RelPositionMultiHeadAttention {
                         q_vals[12] * k_vals[12] + q_vals[13] * k_vals[13] +
                         q_vals[14] * k_vals[14] + q_vals[15] * k_vals[15];
                 }
-
+            
                 for (; d_idx + 8 <= D; d_idx += 8) {
                     result +=
                         q_vec_ptr[d_idx] * k_vec_ptr[d_idx] +
@@ -431,7 +431,7 @@ public class RelPositionMultiHeadLocalAttention: RelPositionMultiHeadAttention {
                         q_vec_ptr[d_idx + 6] * k_vec_ptr[d_idx + 6] +
                         q_vec_ptr[d_idx + 7] * k_vec_ptr[d_idx + 7];
                 }
-
+            
                 for (; d_idx + 4 <= D; d_idx += 4) {
                     result +=
                         q_vec_ptr[d_idx] * k_vec_ptr[d_idx] +
@@ -439,14 +439,14 @@ public class RelPositionMultiHeadLocalAttention: RelPositionMultiHeadAttention {
                         q_vec_ptr[d_idx + 2] * k_vec_ptr[d_idx + 2] +
                         q_vec_ptr[d_idx + 3] * k_vec_ptr[d_idx + 3];
                 }
-
+            
                 for (; d_idx < D; ++d_idx) {
                     result += q_vec_ptr[d_idx] * k_vec_ptr[d_idx];
                 }
             } else {
                 result = T(-INFINITY);
             }
-
+            
             uint out_idx = target_idx * K_rel + k_rel_idx;
             out[out_idx] = result;
         """
@@ -530,42 +530,42 @@ public class RelPositionMultiHeadLocalAttention: RelPositionMultiHeadAttention {
             uint S_p = prob_shape[2];
             uint S_v = v_shape[2];
             uint K_rel = 2 * W + 1;
-
+            
             uint d_idx = thread_position_in_grid.x;
             uint s_p_idx = thread_position_in_grid.y;
             uint bh_idx = thread_position_in_grid.z;  // merged
-
+            
             if (d_idx >= D_v || s_p_idx >= S_p || bh_idx >= (B * H)) {
                 return;
             }
-
+            
             uint b_idx = bh_idx / H;
             uint h_idx = bh_idx % H;
-
+            
             T current_sum = 0.0f;
-
+            
             // p[b, h, s_p, k_rel]
             uint P_H_stride = S_p * K_rel;
             uint P_B_stride = H * P_H_stride;
-
+            
             // v[b, h, s_v, d]
             uint V_H_stride = S_v * D_v;
             uint V_B_stride = H * V_H_stride;
-
+            
             // out[b, s_p, h, d]
             uint O_S_stride = D_v * H;
             uint O_B_stride = S_p * O_S_stride;
-    
+            
             uint stick_p_v_idx = S_v - S_p + s_p_idx;
             // stick to right (assuming S_v >= S_p)
-
+            
             uint k = 0;
             // hand unrolling
             for (; k + 16 <= K_rel; k += 16) {
                 float prob_vals[16], v_vals[16];
                 int s_v_indices[16];
                 bool valid[16];
-
+            
                 for (uint i = 0; i < 16; ++i) {
                     s_v_indices[i] = int(stick_p_v_idx) + int(k + i) - int(W);
                     valid[i] = (s_v_indices[i] >= 0 && s_v_indices[i] < S_v);
@@ -579,7 +579,7 @@ public class RelPositionMultiHeadLocalAttention: RelPositionMultiHeadAttention {
                         v_vals[i] = 0.0f;
                     }
                 }
-
+            
                 current_sum +=
                     prob_vals[0] * v_vals[0] + prob_vals[1] * v_vals[1] +
                     prob_vals[2] * v_vals[2] + prob_vals[3] * v_vals[3] +
@@ -590,7 +590,7 @@ public class RelPositionMultiHeadLocalAttention: RelPositionMultiHeadAttention {
                     prob_vals[12] * v_vals[12] + prob_vals[13] * v_vals[13] +
                     prob_vals[14] * v_vals[14] + prob_vals[15] * v_vals[15];
             }
-
+            
             for (; k + 8 <= K_rel; k += 8) {
                 for (uint i = 0; i < 8; ++i) {
                     int s_v_idx_signed = int(stick_p_v_idx) + int(k + i) - int(W);
@@ -602,7 +602,7 @@ public class RelPositionMultiHeadLocalAttention: RelPositionMultiHeadAttention {
                     }
                 }
             }
-
+            
             for (; k + 4 <= K_rel; k += 4) {
                 for (uint i = 0; i < 4; ++i) {
                     int s_v_idx_signed = int(stick_p_v_idx) + int(k + i) - int(W);
@@ -614,7 +614,7 @@ public class RelPositionMultiHeadLocalAttention: RelPositionMultiHeadAttention {
                     }
                 }
             }
-
+            
             for (; k < K_rel; ++k) {
                 int s_v_idx_signed = int(stick_p_v_idx) + int(k) - int(W);
                 if (s_v_idx_signed >= 0 && s_v_idx_signed < S_v) {
@@ -624,12 +624,12 @@ public class RelPositionMultiHeadLocalAttention: RelPositionMultiHeadAttention {
                     current_sum += prob[prob_idx] * v[v_idx];
                 }
             }
-
+            
             uint out_idx =
                 b_idx * O_B_stride + s_p_idx * O_S_stride + h_idx * D_v + d_idx;
-
+            
             context_out[out_idx] = current_sum;
-            """
+        """
 
         let B = prob.shape[0]
         let H = prob.shape[1]
