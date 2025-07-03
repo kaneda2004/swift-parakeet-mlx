@@ -1,0 +1,22 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:swift-parakeet-mlx-fixed}",
+            "name": "Debug TranscriptionApp",
+            "program": "${workspaceFolder:swift-parakeet-mlx-fixed}/.build/debug/TranscriptionApp",
+            "preLaunchTask": "swift: Build Debug TranscriptionApp"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:swift-parakeet-mlx-fixed}",
+            "name": "Release TranscriptionApp",
+            "program": "${workspaceFolder:swift-parakeet-mlx-fixed}/.build/release/TranscriptionApp",
+            "preLaunchTask": "swift: Build Release TranscriptionApp"
+        }
+    ]
+}
